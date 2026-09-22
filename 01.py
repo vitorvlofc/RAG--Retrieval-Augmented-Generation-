@@ -1,7 +1,10 @@
 from dotenv import load_dotenv
 
+from langsmith import Client
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_pymupdf4llm import PyMuPDF4LLMLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -45,7 +48,7 @@ embedding = OpenAIEmbeddings(
 vectorstore = Chroma.from_documents(
     documents=chunks,
     embedding=embedding,
-    collection_name="manual_notebook",
+    collection_name="Manual_notebook.pdf",
     persist_directory=CHROMA_PATH
 )
 
@@ -54,10 +57,40 @@ vectorstore = Chroma.from_documents(
 retriever = vectorstore.as_retriever()
 
 
-# Realiza a busca
-result = retriever.invoke(
-    "quanto de memória RAM o notebook possui?"
+# Carrega o prompt do LangChain Hub
+client = Client()
+
+prompt = client.pull_prompt(
+    "rlm/rag-prompt",
+    dangerously_pull_public_prompt=True
 )
 
 
-print(f"Resultado da busca: {result}")
+# Cria o modelo
+model = ChatOpenAI(
+    model="gpt-4o-mini"
+)
+
+
+# Cria a cadeia RAG
+rag_chain = (
+    {
+        "context": retriever,
+        "question": RunnablePassthrough(),
+    }
+    | prompt
+    | model
+    | StrOutputParser()
+)
+
+
+try:
+    while True:
+        question = input("Digite sua pergunta ou aperte Ctrl+C para sair: ")
+
+        result = rag_chain.invoke(question)
+
+        print(f"Resposta: {result}")
+
+except KeyboardInterrupt:
+    print("\nEncerrando o programa.")
